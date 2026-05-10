@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مسير الورشة الاحترافي</title>
+    <style>
+        :root { --primary: #2c3e50; --success: #28a745; --danger: #dc3545; --income-bg: #d4edda; --expense-bg: #f8d7da; --light: #f8f9fa; }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--light); padding-top: 60px; }
+        .fixed-header { position: fixed; top: 0; width: 100%; background: var(--primary); z-index: 1000; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .top-nav { display: flex; justify-content: space-around; padding: 10px; }
+        .top-nav button { background: white; border: none; padding: 8px 12px; border-radius: 5px; font-weight: bold; color: var(--primary); font-size: 12px; }
+        .stats-bar { display: flex; background: white; padding: 10px; gap: 5px; border-bottom: 1px solid #ddd; display: none; }
+        .stat-btn { flex: 1; border: none; padding: 10px; border-radius: 8px; text-align: center; font-size: 13px; }
+        .stat-btn.inc { background: var(--income-bg); color: #155724; }
+        .stat-btn.exp { background: var(--expense-bg); color: #721c24; }
+        .stat-btn.active { outline: 2px solid var(--primary); font-weight: bold; }
+        .container { padding: 15px; }
+        .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 15px; }
+        .time-filters { display: flex; gap: 5px; margin: 10px 0; }
+        .time-btn { flex: 1; padding: 8px; border: 1px solid var(--primary); border-radius: 20px; background: white; font-size: 11px; cursor: pointer; }
+        .time-btn.active { background: var(--primary); color: white; }
+        .row { padding: 12px; border-radius: 8px; margin-bottom: 10px; border-right: 5px solid transparent; }
+        .row.income { background: var(--income-bg); border-right-color: var(--success); }
+        .row.expense { background: var(--expense-bg); border-right-color: var(--danger); }
+        input, select, textarea { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; box-sizing: border-box; }
+        .search-input { width: 100%; padding: 15px; border: 2px solid var(--primary); border-radius: 10px; font-size: 16px; margin: 10px 0; }
+        .whatsapp-btn { background: #25D366; color: white; border: none; padding: 8px; border-radius: 5px; width: auto; font-size: 13px; font-weight: bold; margin: 5px auto; display: block; cursor: pointer; }
+        .btn-save { background: var(--success); color: white; border: none; width: 100%; padding: 15px; border-radius: 8px; font-weight: bold; font-size: 18px; }
+    </style>
+</head>
+<body>
+
+<div class="fixed-header">
+    <div class="top-nav">
+        <button onclick="currentFilter='all'; renderHome()">🏠 الرئيسية</button>
+        <button onclick="showForm('income')">+ إضافة دخل</button>
+        <button onclick="showForm('expense')">- إضافة مصروف</button>
+    </div>
+</div>
+
+<div class="stats-bar" id="statsBar"></div>
+<div class="container" id="mainContent"></div>
+
+<script>
+    let transactions = JSON.parse(localStorage.getItem('ws_data')) || [];
+    let currentFilter = 'all'; 
+    let timeFilter = 'الكل'; 
+    const cars = ["Audi", "Citroën", "Dacia", "Hyundai", "Peugeot", "Renault", "Seat", "Skoda", "Toyota", "Volkswagen", "Other"];
+    const expenseCategories = ["طعام", "دواء", "قطع غيار", "أدوات ورشة", "فواتير", "أجرة عمال", "أخرى"];
+
+    function renderHome() {
+        document.getElementById('statsBar').style.display = 'flex';
+        document.body.style.paddingTop = "115px";
+        const content = document.getElementById('mainContent');
+        const stats = calculateStats();
+        
+        document.getElementById('statsBar').innerHTML = `
+            <div class="stat-btn inc ${currentFilter==='income'?'active':''}" onclick="currentFilter='income'; renderHome()">
+                المداخيل<br><b>${stats.income} DA</b>
+            </div>
+            <div class="stat-btn exp ${currentFilter==='expense'?'active':''}" onclick="currentFilter='expense'; renderHome()">
+                المصاريف<br><b>${stats.expense} DA</b>
+            </div>
+        `;
+
+        let filtered = filterByTime(transactions);
+        if(currentFilter !== 'all') filtered = filtered.filter(t => t.type === currentFilter);
+        filtered.sort((a,b) => new Date(b.date) - new Date(a.date));
+
+        let rowsHtml = filtered.map(t => `
+            <div class="row ${t.type}">
+                <div style="display:flex; justify-content:space-between; font-weight:bold;">
+                    <span>${t.type==='income' ? t.car : t.service}</span><span>${t.amount} DA</span>
+                </div>
+                <div style="font-size:0.8em; color:#555; margin-top:5px;">
+                    ${t.type==='income' ? t.customer + ' | ' + t.service : (t.note || 'بدون ملاحظة')}
+                </div>
+                <div style="margin-top:8px; font-size:0.85em;">
+                    <span onclick="editItem(${t.id})" style="color:blue">📝 تعديل</span> &nbsp;&nbsp;
+                    <span onclick="deleteItem(${t.id})" style="color:red">🗑️ حذف</span>
+                </div>
+            </div>
+        `).join('');
+
+        content.innerHTML = `
+            <div class="card" style="background:var(--primary); color:white; text-align:center; padding:10px;">
+                <small>الربح الصافي (${timeFilter})</small>
+                <h3 style="margin:5px 0;">${stats.income - stats.expense} DA</h3>
+            </div>
+            <div class="time-filters">
+                <button class="time-btn ${timeFilter==='الكل'?'active':''}" onclick="timeFilter='الكل'; renderHome()">الكل</button>
+                <button class="time-btn ${timeFilter==='اليوم'?'active':''}" onclick="timeFilter='اليوم'; renderHome()">اليوم</button>
+                <button class="time-btn ${timeFilter==='الأسبوع'?'active':''}" onclick="timeFilter='الأسبوع'; renderHome()">الأسبوع</button>
+                <button class="time-btn ${timeFilter==='الشهر'?'active':''}" onclick="timeFilter='الشهر'; renderHome()">الشهر</button>
+            </div>
+            <button class="whatsapp-btn" onclick="sendToWhatsapp()">📱 إرسال تقرير الواتساب</button>
+            <input type="text" class="search-input" placeholder="🔍 ابحث هنا عن أي شيء..." oninput="search(this.value)">
+            ${rowsHtml || '<p style="text-align:center">السجل فارغ</p>'}
+        `;
+    }
+
+    function sendToWhatsapp() {
+        const stats = calculateStats();
+        const msg = `*تقرير ورشة السيارات*\nالفترة: ${timeFilter}\n💰 المداخيل: ${stats.income} DA\n💸 المصاريف: ${stats.expense} DA\n✅ الصافي: ${stats.income - stats.expense} DA`;
+        
+        const dummy = document.createElement("textarea");
+        document.body.appendChild(dummy);
+        dummy.value = msg;
+        dummy.select();
+        document.execCommand("copy");
+        document.body.removeChild(dummy);
+
+        alert("تم نسخ التقرير تلقائياً! سأحاول الآن فتح واتساب...");
+        window.location.href = "whatsapp://send?text=" + encodeURIComponent(msg);
+    }
+
+    function filterByTime(data) {
+        const now = new Date();
+        if(timeFilter === 'اليوم') return data.filter(t => new Date(t.date).toDateString() === now.toDateString());
+        if(timeFilter === 'الأسبوع') return data.filter(t => (now - new Date(t.date)) / (1000*60*60*24) <= 7);
+        if(timeFilter === 'الشهر') return data.filter(t => new Date(t.date).getMonth() === now.getMonth());
+        return data;
+    }
+
+    function calculateStats() {
+        let filtered = filterByTime(transactions);
+        let inc = filtered.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+        let exp = filtered.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+        return { income: inc, expense: exp };
+    }
+
+    function showForm(type, existingData = null) {
+        document.getElementById('statsBar').style.display = 'none';
+        document.body.style.paddingTop = "60px";
+        const content = document.getElementById('mainContent');
+
+        if(type === 'income') {
+            let carOptions = cars.map(c => `<option value="${c}" ${existingData?.car===c?'selected':''}>${c}</option>`).join('');
+            content.innerHTML = `<div class="card">
+                <h3>${existingData?'تعديل':'إضافة'} دخل</h3>
+                <input type="text" id="customer" placeholder="اسم الزبون" value="${existingData?.customer||''}">
+                <select id="car">${carOptions}</select>
+                <input type="text" id="service" placeholder="نوع الإصلاح" value="${existingData?.service||''}">
+                <input type="number" id="amount" placeholder="المبلغ" value="${existingData?.amount||''}">
+                <button class="btn-save" onclick="saveData('income', ${existingData?.id || null})">حفظ</button>
+            </div>`;
+        } else {
+            let expOptions = expenseCategories.map(e => `<option value="${e}" ${existingData?.service===e?'selected':''}>${e}</option>`).join('');
+            content.innerHTML = `<div class="card">
+                <h3>${existingData?'تعديل':'إضافة'} مصروف</h3>
+                <select id="expenseCat">${expOptions}</select>
+                <textarea id="note" placeholder="ملاحظات" rows="2">${existingData?.note||''}</textarea>
+                <input type="number" id="amount" placeholder="المبلغ" value="${existingData?.amount||''}">
+                <button class="btn-save" style="background:var(--danger)" onclick="saveData('expense', ${existingData?.id || null})">خصم</button>
+            </div>`;
+        }
+    }
+
+    function saveData(type, id) {
+        const amount = parseFloat(document.getElementById('amount').value);
+        if(!amount) return alert("أدخل مبلغا صحيحا");
+        const data = {
+            id: id || Date.now(),
+            date: id ? transactions.find(t=>t.id===id).date : new Date().toISOString(),
+            type: type,
+            customer: document.getElementById('customer')?.value || '---',
+            car: document.getElementById('car')?.value || '---',
+            service: type === 'expense' ? document.getElementById('expenseCat').value : (document.getElementById('service').value || 'إصلاح'),
+            note: document.getElementById('note')?.value || '',
+            amount: amount
+        };
+        if(id) transactions = transactions.map(t => t.id === id ? data : t);
+        else transactions.push(data);
+        localStorage.setItem('ws_data', JSON.stringify(transactions));
+        renderHome();
+    }
+
+    function deleteItem(id) { if(confirm("حذف؟")) { transactions = transactions.filter(t => t.id !== id); localStorage.setItem('ws_data', JSON.stringify(transactions)); renderHome(); } }
+    function editItem(id) { showForm(transactions.find(t => t.id === id).type, transactions.find(t => t.id === id)); }
+    function search(q) { document.querySelectorAll('.row').forEach(r => r.style.display = r.innerText.toLowerCase().includes(q.toLowerCase()) ? 'block' : 'none'); }
+    
+    renderHome();
+</script>
+</body>
+</html>
